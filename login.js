@@ -1,3 +1,6 @@
+if (location.protocol === 'file:') {
+  location.replace('https://sakwag-agl.github.io/oldernew-ai-guide/');
+} else {
 const form = document.getElementById('login-form');
 const input = document.getElementById('password');
 const button = document.getElementById('enter');
@@ -18,12 +21,44 @@ function destination() {
   return `./${next}`;
 }
 
+function waitForController() {
+  if (navigator.serviceWorker.controller) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const onChange = () => {
+      if (!navigator.serviceWorker.controller) return;
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+      resolve(false);
+    }, 5000);
+    navigator.serviceWorker.addEventListener('controllerchange', onChange);
+    onChange();
+  });
+}
+
+async function enterGuide() {
+  if (await waitForController()) {
+    sessionStorage.removeItem('oldernew-control-retry');
+    location.replace(destination());
+    return;
+  }
+  if (sessionStorage.getItem('oldernew-control-retry') !== '1') {
+    sessionStorage.setItem('oldernew-control-retry', '1');
+    location.reload();
+  } else {
+    error.textContent = '브라우저가 가이드 열기를 준비하지 못했습니다. 이 페이지를 새로고침해 다시 시도해 주세요.';
+  }
+}
+
 let workerReady;
 try {
   workerReady = navigator.serviceWorker.register('./sw.js', { scope: './' }).then(() => navigator.serviceWorker.ready);
   workerReady.then(async registration => {
     const state = await workerMessage(registration.active, { type: 'status' });
-    if (state?.authorized) location.replace(destination());
+    if (state?.authorized) await enterGuide();
   }).catch(() => {});
 } catch {
   error.textContent = '이 브라우저에서 보안 저장 기능을 사용할 수 없습니다.';
@@ -55,7 +90,7 @@ form.addEventListener('submit', async event => {
     const result = await workerMessage(registration.active, { type: 'unlock', key, manifest });
     if (!result?.ok) throw new Error('worker');
     input.value = '';
-    location.replace(destination());
+    await enterGuide();
   } catch (cause) {
     error.textContent = cause?.name === 'OperationError'
       ? '비밀번호가 일치하지 않습니다.'
@@ -66,3 +101,4 @@ form.addEventListener('submit', async event => {
     button.textContent = '가이드 보기';
   }
 });
+}
